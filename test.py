@@ -5,9 +5,9 @@ from stellar_sdk import Server, Keypair, Network, TransactionBuilder
 from stellar_sdk.exceptions import NotFoundError
 
 # --- CONFIGURATION ---
-TARGET_ADDRESS = "GCGEID4OYTFPAWVUETPYF6SUXABX6WVBITKO3ZPPQOI2LSVSYEAKU5S7"
-NUM_ACCOUNTS = 100
-MAX_CONCURRENT_THREADS = 5 # Do not set this too high or Friendbot will IP ban you
+TARGET_ADDRESS = "GAUNZRTAMAA2YNHACK7C6YRJ66Q4LU3MO4NLM5IUHEWFJYPFZMQVTHHF"
+NUM_ACCOUNTS = 100000
+MAX_CONCURRENT_THREADS = 10 # Do not set this too high or Friendbot will IP ban you
 FRIENDBOT_URL = "https://friendbot.stellar.org/"
 
 server = Server("https://horizon-testnet.stellar.org")

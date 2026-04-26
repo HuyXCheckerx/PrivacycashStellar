@@ -75,14 +75,15 @@ Bob (via Relayer) signs a Soroban Auth Entry and withdraws the funds
 ┌───────────────────────────────────────────────────────────┐
 │              Soroban Smart Contract (Rust)                │
 │                                                           │
-│  deposit(from, stealth_addr, ephemeral_key,               │
+│  deposit(from, stealth_pubkey, ephemeral_key,             │
 │          encrypted_seed, token, amount)                   │
 │    → transfers funds into contract storage               │
 │    → emits StealthDepositEvent (ephemeral_key,           │
-│         encrypted_seed, stealth_address, amount)         │
+│         encrypted_seed, stealth_pubkey, amount)          │
 │                                                           │
-│  withdraw(stealth_address, token, destination, relayer)   │
-│    → requires stealth_address.require_auth()             │
+│  withdraw(stealth_pubkey, token, destination, relayer,    │
+│           signature)                                      │
+│    → verifies Ed25519 signature of payload               │
 │    → deducts 0.5% fee → sends to relayer                │
 │    → sends 99.5% → destination (Bob's main wallet)      │
 └───────────────────────────────────────────────────────────┘
@@ -215,7 +216,7 @@ Internally:
 
 ## Smart Contract
 
-**Contract ID (Testnet):** `CB6JPL4XCB62A7EG6EFH4LC55NKRNA3UYQZBCPFLYG2NYJAX4GLA5V2Z`
+**Contract ID (Testnet):** `CBMB7QOASALQ4VAABYLAN3WP74HG6ZVZWIQGYDDGL2QZN2BNNN4I4JRJ`
 
 **Network:** Stellar Testnet (`https://soroban-testnet.stellar.org`)
 
@@ -225,7 +226,7 @@ Internally:
 pub fn deposit(
     env: Env,
     from: Address,          // Alice's wallet — must sign
-    stealth_address: Address, // Derived by Alice
+    stealth_pubkey: BytesN<32>, // Derived by Alice
     ephemeral_key: BytesN<32>,
     encrypted_seed: BytesN<32>,
     token: Address,         // Native XLM token contract
@@ -235,23 +236,25 @@ pub fn deposit(
 
 - Requires `from.require_auth()` — Alice's Freighter wallet signs.
 - Transfers `amount` from Alice into the contract's own custody.
-- Stores `balance[stealth_address] += amount` in **persistent storage** with a ~30-day TTL extension.
-- Emits a `StealthDepositEvent` containing `ephemeral_key`, `encrypted_seed`, and `stealth_address` — the only information Bob needs to scan.
+- Stores `balance[stealth_pubkey] += amount` in **persistent storage** with a ~30-day TTL extension.
+- Emits a `StealthDepositEvent` containing `ephemeral_key`, `encrypted_seed`, and `stealth_pubkey` — the only information Bob needs to scan.
 
 ### `withdraw`
 
 ```rust
 pub fn withdraw(
     env: Env,
-    stealth_address: Address, // Must sign via Soroban auth
+    stealth_pubkey: BytesN<32>,
     token: Address,
     destination: Address,   // Bob's main wallet
     relayer: Address,       // Relayer receives 0.5% fee
+    signature: BytesN<64>,  // Ed25519 signature over payload
 )
 ```
 
-- Requires `stealth_address.require_auth()` — **only the stealth keypair** (derived by Bob) can authorize this.
-- Clears `balance[stealth_address]` atomically before transfers (re-entrancy safe).
+- Verifies the `signature` using `env.crypto().ed25519_verify()` — **only the stealth keypair** (derived by Bob) can authorize this.
+- The signed payload commits to `(contract_address, token, destination, relayer)` preventing replay and malleability.
+- Clears `balance[stealth_pubkey]` atomically before transfers (re-entrancy safe).
 - Transfers `0.5%` of the balance to the Relayer.
 - Transfers the remaining `99.5%` to Bob's destination address.
 
@@ -276,19 +279,18 @@ The Relayer is a **funded Stellar account** that acts as the transaction source 
 
 The Relayer acts as the **Stellar transaction source account** (providing sequence number and fee), but it cannot steal or redirect funds. Here's why:
 
-1. The `withdraw` Soroban call includes `stealth_address.require_auth()`.
-2. The Stealth Keypair **signs a `SorobanAuthorizationEntry`** — a cryptographic commitment to the exact arguments: stealth address, token, destination, and relayer.
-3. If the Relayer modifies any argument (e.g. changes the destination), the Soroban auth signature is invalid and the **entire transaction is rejected by the network**.
+1. The `withdraw` Soroban call accepts an Ed25519 `signature`.
+2. The Stealth Keypair signs a payload concatenating the XDR representations of: `[Contract ID, Token, Destination, Relayer]`.
+3. If the Relayer modifies any argument (e.g. changes the destination), the signature validation (`ed25519_verify`) fails and the transaction is rejected by the smart contract.
 4. The Relayer only signs the outer **transaction envelope** for sequence number / fee purposes — it has zero authority over the Soroban invocation parameters.
 
 ```
-Bob's Stealth Keypair ─── signs ──→ SorobanAuthorizationEntry
-                                     { stealth_addr, token, destination, relayer }
-                                                │
-                                    ✅ Contract verifies this signature
-                                                │
+Bob's Stealth Keypair ─── signs ──→ Payload (Contract + Token + Dest + Relayer)
+                                                 │
+                                     ✅ Contract verifies this signature
+                                                 │
 Relayer Keypair ─────── signs ──→  Transaction Envelope (seq number + fee)
-                                    ❌ Cannot change Soroban args
+                                     ❌ Cannot change Soroban args
 ```
 
 ### Fee
@@ -319,7 +321,7 @@ The Relayer earns **0.5%** of each withdrawal, deducted automatically by the sma
 |-----------|-------|
 | Network | Stellar Testnet |
 | RPC URL | `https://soroban-testnet.stellar.org` |
-| Contract ID | `CB6JPL4XCB62A7EG6EFH4LC55NKRNA3UYQZBCPFLYG2NYJAX4GLA5V2Z` |
+| Contract ID | `CBMB7QOASALQ4VAABYLAN3WP74HG6ZVZWIQGYDDGL2QZN2BNNN4I4JRJ` |
 | Native XLM Token | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
 | Relayer Address | `GAUNZRTAMAA2YNHACK7C6YRJ66Q4LU3MO4NLM5IUHEWFJYPFZMQVTHHF` |
 

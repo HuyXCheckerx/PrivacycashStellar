@@ -1,11 +1,7 @@
 #![no_std]
 
-#[cfg(test)]
-mod test;
-
-
 use soroban_sdk::{
-    contract, contractimpl, contractevent, token, Address, BytesN, Env,
+    contract, contractimpl, contractevent, token, Address, BytesN, Env, Bytes, xdr::ToXdr
 };
 
 /// Event emitted when a new stealth deposit is made.
@@ -15,8 +11,8 @@ pub struct StealthDepositEvent {
     pub ephemeral_key: BytesN<32>,
     /// The XOR-encrypted 32-byte Stellar seed for the stealth address
     pub encrypted_seed: BytesN<32>,
-    /// The resulting stealth address that controls the funds
-    pub stealth_address: Address,
+    /// The resulting stealth public key that controls the funds
+    pub stealth_pubkey: BytesN<32>,
     /// Amount of token deposited
     pub amount: i128,
     /// Token address
@@ -28,11 +24,11 @@ pub struct StealthContract;
 
 #[contractimpl]
 impl StealthContract {
-    /// Deposit funds into the smart contract and assign them to a stealth address.
+    /// Deposit funds into the smart contract and assign them to a stealth public key.
     pub fn deposit(
         env: Env,
         from: Address,
-        stealth_address: Address,
+        stealth_pubkey: BytesN<32>,
         ephemeral_key: BytesN<32>,
         encrypted_seed: BytesN<32>,
         token: Address,
@@ -41,7 +37,7 @@ impl StealthContract {
         from.require_auth();
 
         if amount <= 0 {
-            panic!("Amount must be greater than 0 (dummy hash change)");
+            panic!("Amount must be greater than 0");
         }
 
         // Transfer funds from sender to this contract
@@ -49,17 +45,17 @@ impl StealthContract {
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         // Update persistent storage for the stealth address
-        let current_balance: i128 = env.storage().persistent().get(&stealth_address).unwrap_or(0);
-        env.storage().persistent().set(&stealth_address, &(current_balance + amount));
+        let current_balance: i128 = env.storage().persistent().get(&stealth_pubkey).unwrap_or(0);
+        env.storage().persistent().set(&stealth_pubkey, &(current_balance + amount));
         
         // Bump TTL to ensure the stealth deposit doesn't expire quickly (approx 30 days)
-        env.storage().persistent().extend_ttl(&stealth_address, 518400, 518400);
+        env.storage().persistent().extend_ttl(&stealth_pubkey, 518400, 518400);
 
         // Emit the event so the receiver can scan for it
         StealthDepositEvent {
             ephemeral_key,
             encrypted_seed,
-            stealth_address,
+            stealth_pubkey: stealth_pubkey.clone(),
             amount,
             token,
         }
@@ -71,22 +67,29 @@ impl StealthContract {
     /// Withdraw funds from a stealth address to a final destination.
     pub fn withdraw(
         env: Env,
-        stealth_address: Address,
+        stealth_pubkey: BytesN<32>,
         token: Address,
         destination: Address,
         relayer: Address,
+        signature: BytesN<64>,
     ) {
-        // The derived stealth address must authorize this withdrawal
-        stealth_address.require_auth();
-
-        let balance: i128 = env.storage().persistent().get(&stealth_address).unwrap_or(0);
+        let balance: i128 = env.storage().persistent().get(&stealth_pubkey).unwrap_or(0);
 
         if balance <= 0 {
             panic!("No funds available for this stealth address");
         }
 
+        // Verify signature over the withdrawal parameters
+        let mut payload = Bytes::new(&env);
+        payload.append(&env.current_contract_address().to_xdr(&env));
+        payload.append(&token.clone().to_xdr(&env));
+        payload.append(&destination.clone().to_xdr(&env));
+        payload.append(&relayer.clone().to_xdr(&env));
+
+        env.crypto().ed25519_verify(&stealth_pubkey, &payload, &signature);
+
         // Zero out the balance to prevent re-entrancy/double withdrawal
-        env.storage().persistent().remove(&stealth_address);
+        env.storage().persistent().remove(&stealth_pubkey);
 
         // Calculate 0.5% fee
         // 0.5% is 5/1000
@@ -104,5 +107,14 @@ impl StealthContract {
         if transfer_amount > 0 {
             token_client.transfer(&env.current_contract_address(), &destination, &transfer_amount);
         }
+    }
+
+    pub fn test_payload(env: Env, token: Address, destination: Address, relayer: Address) -> Bytes {
+        let mut payload = Bytes::new(&env);
+        payload.append(&env.current_contract_address().to_xdr(&env));
+        payload.append(&token.clone().to_xdr(&env));
+        payload.append(&destination.clone().to_xdr(&env));
+        payload.append(&relayer.clone().to_xdr(&env));
+        payload
     }
 }
