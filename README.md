@@ -25,6 +25,15 @@ Stellar Stealth Protocol is a proof-of-concept implementation of [stealth addres
 
 ---
 
+
+
+# 🌑 Demonstration
+https://youtu.be/I0S4O1DZuXs
+<img width="3761" height="2023" alt="Screenshot 2026-04-26 221439" src="https://github.com/user-attachments/assets/88ae5601-3615-425c-be57-a59ed685e1c7" />
+<img width="3762" height="2026" alt="image" src="https://github.com/user-attachments/assets/41ad96f2-ca7a-4cb6-aec4-0f94a7f12ab4" />
+
+
+
 ## How It Works
 
 The protocol follows the standard **stealth address meta-key** scheme, adapted for Stellar:
