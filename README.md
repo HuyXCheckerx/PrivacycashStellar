@@ -1,5 +1,11 @@
 # 🌑 Stellar Stealth Protocol
 
+# TRY IT OUT ON TESTNET!
+https://www.cryptodealer.fun
+
+
+
+
 > **Private, non-custodial payments on the Stellar Testnet — powered by Soroban smart contracts, X25519 ECDH cryptography, and an automated Relayer.**
 
 Stellar Stealth Protocol is a proof-of-concept implementation of [stealth addresses](https://vitalik.eth.limo/general/2023/01/20/stealth.html) for the Stellar network. It allows a sender (Alice) to deposit funds to an **unlinkable, one-time stealth address** that only the intended recipient (Bob) can discover and withdraw — without any on-chain link between Alice, Bob, and the stealth address being publicly visible.
