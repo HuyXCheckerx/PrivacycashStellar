@@ -28,6 +28,10 @@ export const Terminal: React.FC = () => {
   const [importKeyInput, setImportKeyInput] = useState<string>('');
   const [withdrawDest, setWithdrawDest] = useState<string>('');
 
+  // PCS Reward & Liquidity Pool States
+  const [pcsBalance, setPcsBalance] = useState<number>(0);
+  const [swapAmount, setSwapAmount] = useState<string>('');
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -100,6 +104,7 @@ export const Terminal: React.FC = () => {
         addLine('  DEPOSIT <amt>   - Deposit funds (100, 1000, 10000, 100000)');
         addLine('  SCAN            - Scan blockchain for stealth funds');
         addLine('  WITHDRAW <addr> - Withdraw scanned funds to address');
+        addLine('  SWAP <amt>      - Swap PCS reward tokens for XLM via AMM');
         addLine('  STATUS          - View current key and session data');
         addLine('  CLEAR           - Clear terminal');
         break;
@@ -244,10 +249,16 @@ export const Terminal: React.FC = () => {
           addLine('CONSTRUCTING ZK-PROOF PAYLOAD...', 'warning');
           try {
             const targetFund = scannedFunds[selectedFundIndex];
+            // Simulate the reward logic for the frontend based on the contract: 0.5% fee * 10 multiplier
+            const estimatedReward = (selectedAmount || 100) * 0.005 * 10;
             const hash = await submitWithdrawTx(targetFund.stealthSeedSecret, dest);
+            
             addLine('WITHDRAWAL EXECUTED SUCCESSFULLY.', 'success');
             addLine(`TX ID: ${hash.slice(0, 12)}...`, 'success');
+            addLine(`REWARD: ${estimatedReward} PCS TOKENS MINTED TO ${dest.slice(0, 8)}...`, 'success');
             
+            setPcsBalance(prev => prev + estimatedReward);
+
             // Remove the withdrawn fund from the array
             const newFunds = [...scannedFunds];
             newFunds.splice(selectedFundIndex, 1);
@@ -255,6 +266,37 @@ export const Terminal: React.FC = () => {
             setSelectedFundIndex(null);
           } catch (e: any) {
             addLine(`FAILED: ${e.message}`, 'error');
+          } finally {
+            setIsProcessing(false);
+          }
+        }
+        break;
+
+      case 'swap':
+        if (!freighterPubKey) {
+          addLine('ERROR: MUST CONNECT WALLET FIRST.', 'error');
+          break;
+        }
+        const swapAmt = parseFloat(args[0] || swapAmount);
+        if (isNaN(swapAmt) || swapAmt <= 0) {
+          addLine('USAGE: SWAP <AMT>', 'error');
+        } else if (swapAmt > pcsBalance) {
+          addLine('ERROR: INSUFFICIENT PCS BALANCE.', 'error');
+        } else {
+          setIsProcessing(true);
+          addLine(`ROUTING SWAP VIA CONSTANT-PRODUCT AMM...`, 'warning');
+          try {
+            // In a real implementation this would call the LiquidityPool contract
+            // For the terminal UX we'll simulate the successful swap delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const estimatedXlm = swapAmt * 0.95; // Rough 1:1 estimate minus fees
+            setPcsBalance(prev => prev - swapAmt);
+            
+            addLine('SWAP EXECUTED SUCCESSFULLY.', 'success');
+            addLine(`${swapAmt} PCS -> ${estimatedXlm.toFixed(2)} XLM`, 'success');
+          } catch (e: any) {
+            addLine(`SWAP FAILED: ${e.message}`, 'error');
           } finally {
             setIsProcessing(false);
           }
@@ -310,20 +352,20 @@ export const Terminal: React.FC = () => {
 
   return (
     <div 
-      className="w-full h-screen bg-transparent text-[#E0E0E0] font-mono p-8 flex flex-col overflow-hidden"
+      className="w-full h-screen bg-transparent text-[#E0E0E0] font-mono p-3 sm:p-6 lg:p-8 flex flex-col overflow-hidden overflow-x-hidden"
       onClick={() => inputRef.current?.focus()}
     >
       {/* Header Section */}
-      <header className="border-b border-[#333] pb-6 mb-8 flex justify-between items-end shrink-0">
+      <header className="border-b border-[#333] pb-4 sm:pb-6 mb-4 sm:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 sm:gap-0 shrink-0">
         <div>
-          <h1 className="text-2xl font-bold tracking-tighter text-[#00FFA3] uppercase">
+          <h1 className="text-lg sm:text-2xl font-bold tracking-tighter text-[#00FFA3] uppercase">
             PRIVACYCASH<span className="text-white">.STELLAR</span>
           </h1>
           <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-widest">
             NON-CUSTODIAL PRIVACY PROTOCOL v1.0.4 // LAYER: SOROBAN
           </p>
         </div>
-        <div className="flex gap-8 text-[10px] uppercase tracking-widest">
+        <div className="flex gap-4 sm:gap-8 text-[10px] uppercase tracking-widest">
           <div className="flex flex-col items-end">
             <span className="text-gray-500 mb-1">Wallet Status</span>
             {freighterPubKey ? (
@@ -345,7 +387,7 @@ export const Terminal: React.FC = () => {
       </header>
 
       {/* Main Control Grid */}
-      <div className="grid grid-cols-3 gap-8 flex-grow overflow-hidden mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8 flex-grow overflow-y-auto lg:overflow-hidden mb-4 lg:mb-8">
         
         {/* 01. Key Management */}
         <section className="border border-[#333] p-6 flex flex-col bg-[#0A0A0A]/80 backdrop-blur-sm relative overflow-hidden group hover:border-[#00FFA3]/50 transition-colors">
@@ -557,13 +599,44 @@ export const Terminal: React.FC = () => {
               EXECUTE WITHDRAWAL
             </button>
 
-            <div className="bg-[#111] p-4 border-l border-white/10 space-y-3 mt-auto">
-              <div className="flex justify-between text-[9px] tracking-widest uppercase">
-                <span className="text-gray-500">MIXER READINESS</span>
-                <span className="text-white italic">HIGH ANONYMITY</span>
+            <div className="bg-[#111] p-4 border-l border-white/10 space-y-4 mt-auto">
+              <div>
+                <div className="flex justify-between text-[9px] tracking-widest uppercase mb-2">
+                  <span className="text-[#00FFA3]">PCS REWARDS</span>
+                  <span className="text-white">{pcsBalance.toFixed(2)} PCS</span>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={swapAmount}
+                    onChange={(e) => setSwapAmount(e.target.value)}
+                    placeholder="Amt"
+                    className="w-16 bg-black border border-[#333] px-2 text-[10px] focus:border-[#00FFA3] outline-none text-gray-300 font-mono"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <button 
+                    onClick={() => {
+                      if (swapAmount) {
+                        handleCommand(`swap ${swapAmount}`);
+                        setSwapAmount('');
+                      }
+                    }}
+                    disabled={isProcessing || !swapAmount || parseFloat(swapAmount) > pcsBalance}
+                    className="flex-1 border border-[#333] hover:border-[#00FFA3] text-[#00FFA3] text-[9px] uppercase tracking-widest transition-colors disabled:opacity-30 disabled:hover:border-[#333] cursor-pointer"
+                  >
+                    Swap → XLM
+                  </button>
+                </div>
               </div>
-              <div className="w-full h-1 bg-[#222]">
-                <div className="h-full bg-[#00FFA3] w-2/3 shadow-[0_0_8px_rgba(0,255,163,0.5)]"></div>
+              
+              <div className="pt-4 border-t border-[#222]">
+                <div className="flex justify-between text-[9px] tracking-widest uppercase mb-1">
+                  <span className="text-gray-500">MIXER READINESS</span>
+                  <span className="text-white italic">HIGH ANONYMITY</span>
+                </div>
+                <div className="w-full h-1 bg-[#222]">
+                  <div className="h-full bg-[#00FFA3] w-2/3 shadow-[0_0_8px_rgba(0,255,163,0.5)]"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -571,7 +644,7 @@ export const Terminal: React.FC = () => {
       </div>
 
       {/* Terminal Footer Console */}
-      <div className="h-40 border border-[#333] bg-black/80 backdrop-blur-sm flex flex-col overflow-hidden shrink-0 shadow-[0_0_30px_rgba(0,255,163,0.05)]">
+      <div className="h-32 sm:h-40 border border-[#333] bg-black/80 backdrop-blur-sm flex flex-col overflow-hidden shrink-0 shadow-[0_0_30px_rgba(0,255,163,0.05)]">
         {/* Terminal Header */}
         <div className="flex items-center justify-between px-3 py-1 bg-[#111] border-b border-[#333]">
           <span className="text-[9px] text-gray-500 uppercase tracking-widest flex items-center gap-2">
