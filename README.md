@@ -62,6 +62,8 @@ Bob tries each event: SharedSecret = BobMetaPriv × EphemeralPub
 Bob decrypts: Seed = EncryptedSeed XOR SHA256(Secret)
 Bob reconstructs the Stealth Keypair and checks if the address has funds
 Bob (via Relayer) signs a Soroban Auth Entry and withdraws the funds
+Upon withdrawal, 0.5% fee is deducted and Bob receives PCS token rewards (10x fee)
+Bob can later swap PCS rewards for XLM via the constant-product Liquidity Pool AMM
 ```
 
 **Zero on-chain linkage:** The Stealth Address is a fresh, random Stellar account. Neither Alice's account, Bob's Meta-Key, nor Bob's main wallet address are publicly visible in the same transaction.
@@ -89,19 +91,23 @@ Bob (via Relayer) signs a Soroban Auth Entry and withdraws the funds
             │                            │
             ▼                            ▼
 ┌───────────────────────────────────────────────────────────┐
-│              Soroban Smart Contract (Rust)                │
+│              Soroban Smart Contracts (Rust)               │
 │                                                           │
-│  deposit(from, stealth_pubkey, ephemeral_key,             │
-│          encrypted_seed, token, amount)                   │
-│    → transfers funds into contract storage               │
-│    → emits StealthDepositEvent (ephemeral_key,           │
-│         encrypted_seed, stealth_pubkey, amount)          │
-│                                                           │
-│  withdraw(stealth_pubkey, token, destination, relayer,    │
-│           signature)                                      │
+│  [ Stealth Contract ]                                     │
+│  deposit(...) → transfers funds into contract storage    │
+│  withdraw(...)                                           │
 │    → verifies Ed25519 signature of payload               │
 │    → deducts 0.5% fee → sends to relayer                │
 │    → sends 99.5% → destination (Bob's main wallet)      │
+│    → calls PCS_Token.mint(reward) to destination         │
+│                                                           │
+│  [ PCS Token Contract ]                                   │
+│  Governance and reward token (PrivacyCashStellar)         │
+│  Only authorized minters (Stealth Contract) can mint      │
+│                                                           │
+│  [ Liquidity Pool Contract ]                              │
+│  Constant-product AMM (x·y=k) for PCS / XLM swaps         │
+│  swap(token_in, amount) → returns token_out             │
 └───────────────────────────────────────────────────────────┘
                           │
                           ▼
@@ -120,10 +126,9 @@ Stellar Project/
 ├── contracts/                    # Rust Soroban smart contract workspace
 │   ├── Cargo.toml                # Workspace config (soroban-sdk v25)
 │   └── contracts/
-│       └── stealth_contract/
-│           └── src/
-│               ├── lib.rs        # Main contract: deposit + withdraw logic
-│               └── test.rs       # Unit tests
+│       ├── stealth_contract/     # Main protocol logic
+│       ├── pcs_token/            # Reward token logic
+│       └── liquidity_pool/       # AMM swap logic
 │
 └── frontend/                     # Next.js 16 application
     ├── src/
@@ -132,7 +137,7 @@ Stellar Project/
     │   └── lib/
     │       ├── crypto.ts         # ECDH / stealth address derivation (X25519 + SHA256 + XOR)
     │       └── soroban.ts        # Soroban RPC helpers, deposit/withdraw/scan functions
-    ├── deploy_and_instantiate.mjs # One-shot contract deployment script
+    ├── deploy_all.mjs             # One-shot contract deployment script
     └── create_relayer.mjs         # Generates and funds a Relayer account via Friendbot
 ```
 
@@ -180,10 +185,10 @@ First, fund a deployer account via Friendbot, then run:
 
 ```bash
 cd frontend
-node deploy_and_instantiate.mjs
+node deploy_all.mjs
 ```
 
-Update `CONTRACT_ID` in `src/lib/soroban.ts` with the output contract address.
+Update `CONTRACT_ID`, `PCS_TOKEN_ID`, and `LIQUIDITY_POOL_ID` in `src/lib/soroban.ts` with the output contract addresses.
 
 ---
 
