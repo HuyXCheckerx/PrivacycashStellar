@@ -1,5 +1,13 @@
 # 🌑 Stellar Stealth Protocol
 
+[![Frontend CI](https://github.com/HuyXCheckerx/PrivacycashStellar/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/HuyXCheckerx/PrivacycashStellar/actions/workflows/frontend-ci.yml)
+[![Contracts CI](https://github.com/HuyXCheckerx/PrivacycashStellar/actions/workflows/contracts-ci.yml/badge.svg)](https://github.com/HuyXCheckerx/PrivacycashStellar/actions/workflows/contracts-ci.yml)
+[![Deploy to Testnet](https://github.com/HuyXCheckerx/PrivacycashStellar/actions/workflows/deploy.yml/badge.svg)](https://github.com/HuyXCheckerx/PrivacycashStellar/actions/workflows/deploy.yml)
+![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust)
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
+![Network](https://img.shields.io/badge/Stellar-Testnet-blue?logo=stellar)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 # TRY IT OUT ON TESTNET!
 https://www.cryptodealer.fun
 <img width="3769" height="2027" alt="image" src="https://github.com/user-attachments/assets/173f7cbb-a407-43d6-8691-605127b3cc4c" />
@@ -15,6 +23,7 @@ Stellar Stealth Protocol is a proof-of-concept implementation of [stealth addres
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [How It Works](#how-it-works)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
@@ -28,6 +37,7 @@ Stellar Stealth Protocol is a proof-of-concept implementation of [stealth addres
 - [Relayer](#relayer)
 - [Security Considerations](#security-considerations)
 - [Testnet Deployment](#testnet-deployment)
+- [CI/CD Pipelines](#cicd-pipelines)
 - [Roadmap](#roadmap)
 
 ---
@@ -39,6 +49,31 @@ https://youtu.be/I0S4O1DZuXs
 <img width="3761" height="2023" alt="Screenshot 2026-04-26 221439" src="https://github.com/user-attachments/assets/88ae5601-3615-425c-be57-a59ed685e1c7" />
 <img width="3762" height="2026" alt="image" src="https://github.com/user-attachments/assets/41ad96f2-ca7a-4cb6-aec4-0f94a7f12ab4" />
 
+
+
+---
+
+## Screenshots
+
+### 🖥️ Desktop — Send (Alice)
+
+![Desktop — Send view](frontend/public/screenshots/app-desktop.png)
+
+> Alice enters Bob's Meta-Key Public Key, sets the XLM amount, and clicks **Send Privately**. Freighter Wallet signs the transaction entirely in-browser.
+
+### 📱 Mobile — Responsive Layout
+
+<p align="center">
+  <img src="frontend/public/screenshots/app-mobile.png" width="390" alt="Mobile — Send view" />
+</p>
+
+> The UI is fully responsive. On narrow viewports the terminal panel stacks vertically with touch-friendly inputs and full keyboard support.
+
+### 🔍 Desktop — Scan & Claim (Bob)
+
+![Desktop — Scan and Claim view](frontend/public/screenshots/app-scan-claim.png)
+
+> Bob pastes his Meta-Key private key (never sent to any server) and clicks **Scan Blockchain**. The app scans all Soroban contract events, decrypts them locally, and lists any stealth deposits Bob can claim.
 
 
 ## How It Works
@@ -347,6 +382,47 @@ The Relayer earns **0.5%** of each withdrawal, deducted automatically by the sma
 | Relayer Address | `GAUNZRTAMAA2YNHACK7C6YRJ66Q4LU3MO4NLM5IUHEWFJYPFZMQVTHHF` |
 
 Testnet accounts can be funded for free via [Friendbot](https://friendbot.stellar.org).
+
+---
+
+## CI/CD Pipelines
+
+This repository ships three GitHub Actions workflows under `.github/workflows/`:
+
+| Workflow | File | Trigger | What it does |
+|----------|------|---------|---------------|
+| **Frontend CI** | `frontend-ci.yml` | Push / PR to `main` touching `frontend/` | ESLint → TypeScript type-check → `next build` |
+| **Contracts CI** | `contracts-ci.yml` | Push / PR to `main` touching `contracts/` | `cargo fmt` → `clippy -D warnings` → `cargo test` → WASM build |
+| **Deploy to Testnet** | `deploy.yml` | Push to `main` (contracts) or manual dispatch | Build WASM → deploy all 3 Soroban contracts → build & deploy frontend to Vercel |
+
+### Required GitHub Secrets
+
+Set the following secrets in **Settings → Secrets → Actions** (environment: `testnet`):
+
+| Secret | Description |
+|--------|-------------|
+| `DEPLOYER_SECRET_KEY` | Stellar secret key of the funded deployer account |
+| `VERCEL_TOKEN` | Vercel personal access token |
+| `VERCEL_ORG_ID` | Vercel organisation/team ID |
+| `VERCEL_PROJECT_ID` | Vercel project ID for the frontend |
+
+### Pipeline Flow
+
+```
+git push main
+       │
+       ├─▶ Frontend CI ──────── lint → typecheck → build
+       │
+       └─▶ Contracts CI ──────── fmt → clippy → test
+                  │
+                  └─▶ Deploy (on success)
+                            │
+                            ├─▶ Build WASM artifacts
+                            ├─▶ Deploy pcs_token → Testnet
+                            ├─▶ Deploy liquidity_pool → Testnet
+                            ├─▶ Deploy stealth_contract → Testnet
+                            └─▶ Deploy Next.js → Vercel
+```
 
 ---
 

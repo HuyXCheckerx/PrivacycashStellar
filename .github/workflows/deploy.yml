@@ -1,0 +1,193 @@
+name: Deploy to Testnet
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Target network"
+        required: true
+        default: "testnet"
+        type: choice
+        options:
+          - testnet
+          - futurenet
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  NETWORK: ${{ github.event.inputs.network || 'testnet' }}
+  SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+
+jobs:
+  build-wasm:
+    name: Build WASM Artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      sha_short: ${{ steps.sha.outputs.sha_short }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache Cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+
+      - name: Build all contracts
+        working-directory: contracts
+        run: |
+          cargo build -p stealth_contract --target wasm32v1-none --release
+          cargo build -p pcs_token --target wasm32v1-none --release
+          cargo build -p liquidity_pool --target wasm32v1-none --release
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-wasm-${{ steps.sha.outputs.sha_short }}
+          path: |
+            contracts/target/wasm32v1-none/release/stealth_contract.wasm
+            contracts/target/wasm32v1-none/release/pcs_token.wasm
+            contracts/target/wasm32v1-none/release/liquidity_pool.wasm
+          retention-days: 90
+
+  deploy-contracts:
+    name: Deploy Soroban Contracts
+    runs-on: ubuntu-latest
+    needs: build-wasm
+    environment: testnet
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: soroban-wasm-${{ needs.build-wasm.outputs.sha_short }}
+          path: wasm/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Stellar CLI
+        run: |
+          curl -sSL https://raw.githubusercontent.com/stellar/stellar-cli/main/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Deploy PCS Token contract
+        id: deploy_pcs
+        working-directory: frontend
+        run: |
+          PCS_ID=$(stellar contract deploy \
+            --wasm ../wasm/pcs_token.wasm \
+            --source-account ${{ secrets.DEPLOYER_SECRET_KEY }} \
+            --rpc-url ${{ env.SOROBAN_RPC_URL }} \
+            --network-passphrase "${{ env.STELLAR_NETWORK_PASSPHRASE }}")
+          echo "pcs_token_id=$PCS_ID" >> $GITHUB_OUTPUT
+          echo "PCS Token deployed: $PCS_ID"
+
+      - name: Deploy Liquidity Pool contract
+        id: deploy_lp
+        working-directory: frontend
+        run: |
+          LP_ID=$(stellar contract deploy \
+            --wasm ../wasm/liquidity_pool.wasm \
+            --source-account ${{ secrets.DEPLOYER_SECRET_KEY }} \
+            --rpc-url ${{ env.SOROBAN_RPC_URL }} \
+            --network-passphrase "${{ env.STELLAR_NETWORK_PASSPHRASE }}")
+          echo "liquidity_pool_id=$LP_ID" >> $GITHUB_OUTPUT
+          echo "Liquidity Pool deployed: $LP_ID"
+
+      - name: Deploy Stealth contract
+        id: deploy_stealth
+        working-directory: frontend
+        run: |
+          STEALTH_ID=$(stellar contract deploy \
+            --wasm ../wasm/stealth_contract.wasm \
+            --source-account ${{ secrets.DEPLOYER_SECRET_KEY }} \
+            --rpc-url ${{ env.SOROBAN_RPC_URL }} \
+            --network-passphrase "${{ env.STELLAR_NETWORK_PASSPHRASE }}")
+          echo "stealth_contract_id=$STEALTH_ID" >> $GITHUB_OUTPUT
+          echo "Stealth Contract deployed: $STEALTH_ID"
+
+      - name: Print deployed contract addresses
+        run: |
+          echo "========================================="
+          echo "  Deployed Contract Addresses"
+          echo "========================================="
+          echo "  Stealth Contract : ${{ steps.deploy_stealth.outputs.stealth_contract_id }}"
+          echo "  PCS Token        : ${{ steps.deploy_pcs.outputs.pcs_token_id }}"
+          echo "  Liquidity Pool   : ${{ steps.deploy_lp.outputs.liquidity_pool_id }}"
+          echo "========================================="
+
+      - name: Create deployment summary
+        run: |
+          echo "## 🚀 Testnet Deployment — $(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Address |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Stealth Contract | \`${{ steps.deploy_stealth.outputs.stealth_contract_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| PCS Token | \`${{ steps.deploy_pcs.outputs.pcs_token_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Liquidity Pool | \`${{ steps.deploy_lp.outputs.liquidity_pool_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Network:** ${{ env.NETWORK }} | **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  deploy-frontend:
+    name: Deploy Frontend (Vercel)
+    runs-on: ubuntu-latest
+    needs: deploy-contracts
+    environment: testnet
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Next.js application
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Deploy to Vercel
+        working-directory: frontend
+        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
