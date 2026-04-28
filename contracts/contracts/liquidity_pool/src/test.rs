@@ -1,13 +1,16 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
 use soroban_sdk::token::{Client as TokenClient, StellarAssetClient};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[allow(deprecated)]
 fn create_token<'a>(env: &Env, admin: &Address) -> (TokenClient<'a>, StellarAssetClient<'a>) {
     let addr = env.register_stellar_asset_contract(admin.clone());
-    (TokenClient::new(env, &addr), StellarAssetClient::new(env, &addr))
+    (
+        TokenClient::new(env, &addr),
+        StellarAssetClient::new(env, &addr),
+    )
 }
 
 #[test]

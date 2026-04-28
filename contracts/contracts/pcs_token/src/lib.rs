@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, token, Address, Env, String, Symbol,
+    contract, contracterror, contractimpl, contracttype, token, Address, Env, String, Symbol,
 };
 
 #[cfg(test)]
@@ -143,9 +143,7 @@ impl PCSToken {
         let admin = get_admin(&env);
         admin.require_auth();
 
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Minter(minter));
+        env.storage().persistent().remove(&DataKey::Minter(minter));
     }
 
     /// Mint new PCS tokens. Only callable by admin or authorized minters.
@@ -178,7 +176,13 @@ impl PCSToken {
         get_allowance(&env, &from, &spender)
     }
 
-    pub fn approve(env: Env, from: Address, spender: Address, amount: i128, _expiration_ledger: u32) {
+    pub fn approve(
+        env: Env,
+        from: Address,
+        spender: Address,
+        amount: i128,
+        _expiration_ledger: u32,
+    ) {
         from.require_auth();
         set_allowance(&env, &from, &spender, amount);
 

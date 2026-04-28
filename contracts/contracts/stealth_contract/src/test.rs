@@ -1,12 +1,15 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::token::StellarAssetClient;
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
 
 #[allow(deprecated)]
-fn create_token_contract<'a>(env: &Env, admin: &Address) -> (TokenClient<'a>, StellarAssetClient<'a>) {
+fn create_token_contract<'a>(
+    env: &Env,
+    admin: &Address,
+) -> (TokenClient<'a>, StellarAssetClient<'a>) {
     let token_address = env.register_stellar_asset_contract(admin.clone());
     (
         TokenClient::new(env, &token_address),
@@ -71,8 +74,22 @@ fn test_multiple_deposits_same_stealth() {
     token_admin_client.mint(&alice, &5000);
 
     // Two deposits to same stealth address
-    client.deposit(&alice, &stealth_pubkey, &ephemeral_key, &encrypted_seed, &token.address, &200);
-    client.deposit(&alice, &stealth_pubkey, &ephemeral_key, &encrypted_seed, &token.address, &300);
+    client.deposit(
+        &alice,
+        &stealth_pubkey,
+        &ephemeral_key,
+        &encrypted_seed,
+        &token.address,
+        &200,
+    );
+    client.deposit(
+        &alice,
+        &stealth_pubkey,
+        &ephemeral_key,
+        &encrypted_seed,
+        &token.address,
+        &300,
+    );
 
     // Balance should accumulate
     assert_eq!(client.get_balance(&stealth_pubkey), 500);
@@ -96,7 +113,14 @@ fn test_deposit_zero_amount() {
     let ephemeral_key = BytesN::from_array(&env, &[2u8; 32]);
     let encrypted_seed = BytesN::from_array(&env, &[3u8; 32]);
 
-    client.deposit(&alice, &stealth_pubkey, &ephemeral_key, &encrypted_seed, &token.address, &0);
+    client.deposit(
+        &alice,
+        &stealth_pubkey,
+        &ephemeral_key,
+        &encrypted_seed,
+        &token.address,
+        &0,
+    );
 }
 
 // ── Withdraw Tests ────────────────────────────────────────────────────────────
@@ -117,7 +141,13 @@ fn test_withdraw_empty() {
     let relayer = Address::generate(&env);
     let signature = BytesN::from_array(&env, &[0u8; 64]);
 
-    client.withdraw(&stealth_pubkey, &token.address, &destination, &relayer, &signature);
+    client.withdraw(
+        &stealth_pubkey,
+        &token.address,
+        &destination,
+        &relayer,
+        &signature,
+    );
 }
 
 // ── Admin Tests ───────────────────────────────────────────────────────────────
@@ -184,7 +214,14 @@ fn test_deposit_while_paused() {
     let ephemeral_key = BytesN::from_array(&env, &[2u8; 32]);
     let encrypted_seed = BytesN::from_array(&env, &[3u8; 32]);
 
-    client.deposit(&alice, &stealth_pubkey, &ephemeral_key, &encrypted_seed, &token.address, &100);
+    client.deposit(
+        &alice,
+        &stealth_pubkey,
+        &ephemeral_key,
+        &encrypted_seed,
+        &token.address,
+        &100,
+    );
 }
 
 #[test]
@@ -261,7 +298,14 @@ fn test_withdraw_with_pcs_reward() {
 
     // Mint and deposit
     token_admin_client.mint(&alice, &10000);
-    client.deposit(&alice, &stealth_pubkey, &ephemeral_key, &encrypted_seed, &token.address, &1000);
+    client.deposit(
+        &alice,
+        &stealth_pubkey,
+        &ephemeral_key,
+        &encrypted_seed,
+        &token.address,
+        &1000,
+    );
 
     // Verify balance stored
     assert_eq!(client.get_balance(&stealth_pubkey), 1000);

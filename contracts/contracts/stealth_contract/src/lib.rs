@@ -1,9 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracterror, contracttype, token, Address, Bytes, BytesN, Env,
-    IntoVal, Symbol, Val, Vec,
-    xdr::ToXdr,
+    contract, contracterror, contractimpl, contracttype, token, xdr::ToXdr, Address, Bytes, BytesN,
+    Env, IntoVal, Symbol, Val, Vec,
 };
 
 #[cfg(test)]
@@ -47,12 +46,7 @@ impl StealthContract {
     /// Initialize the stealth contract with admin, PCS token address, and reward multiplier.
     /// The reward multiplier determines how many PCS tokens are minted per unit of fee.
     /// E.g., multiplier = 10 means fee of 1 XLM → 10 PCS minted to withdrawer.
-    pub fn initialize(
-        env: Env,
-        admin: Address,
-        pcs_token: Address,
-        reward_multiplier: i128,
-    ) {
+    pub fn initialize(env: Env, admin: Address, pcs_token: Address, reward_multiplier: i128) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
@@ -80,7 +74,11 @@ impl StealthContract {
         from.require_auth();
 
         // Check paused state
-        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
         if paused {
             panic!("contract is paused");
         }
@@ -105,20 +103,16 @@ impl StealthContract {
         );
 
         // Bump TTL to ensure the stealth deposit doesn't expire quickly (approx 30 days)
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Balance(stealth_pubkey.clone()), 518400, 518400);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Balance(stealth_pubkey.clone()),
+            518400,
+            518400,
+        );
 
         // Emit the event so the receiver can scan for it
         env.events().publish(
             (Symbol::new(&env, "stealth"), Symbol::new(&env, "deposit")),
-            (
-                ephemeral_key,
-                encrypted_seed,
-                stealth_pubkey,
-                amount,
-                token,
-            ),
+            (ephemeral_key, encrypted_seed, stealth_pubkey, amount, token),
         );
 
         true
@@ -137,7 +131,11 @@ impl StealthContract {
         signature: BytesN<64>,
     ) {
         // Check paused state
-        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
         if paused {
             panic!("contract is paused");
         }
@@ -180,7 +178,11 @@ impl StealthContract {
 
         // Transfer the remaining funds to the specified destination
         if transfer_amount > 0 {
-            token_client.transfer(&env.current_contract_address(), &destination, &transfer_amount);
+            token_client.transfer(
+                &env.current_contract_address(),
+                &destination,
+                &transfer_amount,
+            );
         }
 
         // ── PCS Reward Minting (Inter-Contract Call) ──────────────────────
@@ -224,21 +226,13 @@ impl StealthContract {
 
         // Emit withdrawal event
         env.events().publish(
-            (
-                Symbol::new(&env, "stealth"),
-                Symbol::new(&env, "withdraw"),
-            ),
+            (Symbol::new(&env, "stealth"), Symbol::new(&env, "withdraw")),
             (destination, transfer_amount, fee),
         );
     }
 
     /// Helper to compute the signature payload (useful for debugging).
-    pub fn test_payload(
-        env: Env,
-        token: Address,
-        destination: Address,
-        relayer: Address,
-    ) -> Bytes {
+    pub fn test_payload(env: Env, token: Address, destination: Address, relayer: Address) -> Bytes {
         let mut payload = Bytes::new(&env);
         payload.append(&env.current_contract_address().to_xdr(&env));
         payload.append(&token.clone().to_xdr(&env));
@@ -275,7 +269,10 @@ impl StealthContract {
 
     /// Check if the contract is paused.
     pub fn is_paused(env: Env) -> bool {
-        env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
     }
 
     // ── Admin Functions ───────────────────────────────────────────────────

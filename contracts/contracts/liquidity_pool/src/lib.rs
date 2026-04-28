@@ -1,8 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{
-    contract, contractimpl, contracttype, token, Address, Env, Symbol,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol};
 
 #[cfg(test)]
 mod test;
@@ -29,15 +27,24 @@ pub struct LiquidityPool;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn get_reserve_a(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::ReserveA).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::ReserveA)
+        .unwrap_or(0)
 }
 
 fn get_reserve_b(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::ReserveB).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::ReserveB)
+        .unwrap_or(0)
 }
 
 fn get_total_shares(env: &Env) -> i128 {
-    env.storage().instance().get(&DataKey::TotalShares).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::TotalShares)
+        .unwrap_or(0)
 }
 
 fn get_shares(env: &Env, addr: &Address) -> i128 {
@@ -74,7 +81,11 @@ fn isqrt(n: i128) -> i128 {
 }
 
 fn min(a: i128, b: i128) -> i128 {
-    if a < b { a } else { b }
+    if a < b {
+        a
+    } else {
+        b
+    }
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -96,12 +107,7 @@ impl LiquidityPool {
     }
 
     /// Add liquidity to the pool. Returns LP shares minted.
-    pub fn add_liquidity(
-        env: Env,
-        depositor: Address,
-        amount_a: i128,
-        amount_b: i128,
-    ) -> i128 {
+    pub fn add_liquidity(env: Env, depositor: Address, amount_a: i128, amount_b: i128) -> i128 {
         depositor.require_auth();
 
         if amount_a <= 0 || amount_b <= 0 {
@@ -138,9 +144,15 @@ impl LiquidityPool {
         }
 
         // Update state
-        env.storage().instance().set(&DataKey::ReserveA, &(reserve_a + amount_a));
-        env.storage().instance().set(&DataKey::ReserveB, &(reserve_b + amount_b));
-        env.storage().instance().set(&DataKey::TotalShares, &(total_shares + shares));
+        env.storage()
+            .instance()
+            .set(&DataKey::ReserveA, &(reserve_a + amount_a));
+        env.storage()
+            .instance()
+            .set(&DataKey::ReserveB, &(reserve_b + amount_b));
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalShares, &(total_shares + shares));
 
         let current_shares = get_shares(&env, &depositor);
         set_shares(&env, &depositor, current_shares + shares);
@@ -154,11 +166,7 @@ impl LiquidityPool {
     }
 
     /// Remove liquidity from the pool. Returns (amount_a, amount_b) withdrawn.
-    pub fn remove_liquidity(
-        env: Env,
-        provider: Address,
-        share_amount: i128,
-    ) -> (i128, i128) {
+    pub fn remove_liquidity(env: Env, provider: Address, share_amount: i128) -> (i128, i128) {
         provider.require_auth();
 
         if share_amount <= 0 {
@@ -185,9 +193,15 @@ impl LiquidityPool {
         }
 
         // Update state
-        env.storage().instance().set(&DataKey::ReserveA, &(reserve_a - amount_a));
-        env.storage().instance().set(&DataKey::ReserveB, &(reserve_b - amount_b));
-        env.storage().instance().set(&DataKey::TotalShares, &(total_shares - share_amount));
+        env.storage()
+            .instance()
+            .set(&DataKey::ReserveA, &(reserve_a - amount_a));
+        env.storage()
+            .instance()
+            .set(&DataKey::ReserveB, &(reserve_b - amount_b));
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalShares, &(total_shares - share_amount));
         set_shares(&env, &provider, user_shares - share_amount);
 
         // Transfer tokens back
@@ -259,11 +273,19 @@ impl LiquidityPool {
 
         // Update reserves
         if is_a_to_b {
-            env.storage().instance().set(&DataKey::ReserveA, &(reserve_a + amount_in));
-            env.storage().instance().set(&DataKey::ReserveB, &(reserve_b - amount_out));
+            env.storage()
+                .instance()
+                .set(&DataKey::ReserveA, &(reserve_a + amount_in));
+            env.storage()
+                .instance()
+                .set(&DataKey::ReserveB, &(reserve_b - amount_out));
         } else {
-            env.storage().instance().set(&DataKey::ReserveB, &(reserve_b + amount_in));
-            env.storage().instance().set(&DataKey::ReserveA, &(reserve_a - amount_out));
+            env.storage()
+                .instance()
+                .set(&DataKey::ReserveB, &(reserve_b + amount_in));
+            env.storage()
+                .instance()
+                .set(&DataKey::ReserveA, &(reserve_a - amount_out));
         }
 
         env.events().publish(
